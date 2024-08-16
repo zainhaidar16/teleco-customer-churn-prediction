@@ -1,129 +1,159 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
 
-# Load the dataset
-@st.cache_data
-def load_data():
-    data = pd.read_csv('Telco-Customer-Churn.csv')
-    return data
+# Function to load data
+def load_data(file):
+    df = pd.read_csv(file)
+    df.drop(["customerID"],axis="columns",inplace=True)
+    return df
 
-# Clean the data
+# Function to display data information
+def data_overview(df):
+    st.subheader("Data Overview")
+    st.write("Shape of the dataset:", df.shape)
+    st.write("Data Types:")
+    st.write(df.dtypes)
+    st.write("First few rows of the dataset:")
+    st.write(df.head())
+
+# Function for data cleaning
 def clean_data(df):
-    df_cleaned = df.dropna()
-    return df_cleaned
+    numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    categorical_cols = df.select_dtypes(include=['object']).columns
 
-# Preprocess the data
-def preprocess_data(df):
-    le = LabelEncoder()
-    for column in df.select_dtypes(include=['object']).columns:
-        df[column] = le.fit_transform(df[column])
-
-    scaler = StandardScaler()
-    df[df.columns] = scaler.fit_transform(df[df.columns])
+    # Handle missing values
+    df[numerical_cols] = df[numerical_cols].fillna(df[numerical_cols].median())
+    df[categorical_cols] = df[categorical_cols].fillna(df[categorical_cols].mode().iloc[0])
 
     return df
 
-# Display data and basic statistics
-def display_data(df):
-    st.write("## Data Overview")
-    st.dataframe(df.head())
-    st.write("### Basic Statistics")
-    st.write(df.describe())
+# Function for feature engineering
+def feature_engineering(df):
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    for col in categorical_cols:
+        if df[col].nunique() < 10:  # Only encode columns with less than 10 unique values
+            df[col] = LabelEncoder().fit_transform(df[col])
+    
+    return df
 
-# Show EDA Visualizations
-def eda_visualization(df):
-    st.write("## Exploratory Data Analysis")
-    st.write("### Churn Distribution")
-    plt.figure(figsize=(8, 6))
-    sns.countplot(x='Churn', data=df)
-    st.pyplot(plt.gcf())
+# Function for data preprocessing
+def preprocess_data(df):
+    numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    scaler = StandardScaler()
+    df[numerical_cols] = scaler.fit_transform(df[numerical_cols])
+    
+    return df
 
-    st.write("### Correlation Heatmap")
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(df.corr(), annot=True, fmt='.2f', cmap='coolwarm')
-    st.pyplot(plt.gcf())
+# Function for EDA
+def eda(df):
+    st.subheader("Exploratory Data Analysis")
+    
+    # Plot 1: Distribution of target variable
+    if 'Churn' in df.columns:
+        st.write("1. Distribution of Target Variable")
+        sns.countplot(x='Churn', data=df)
+        st.pyplot()
+    
+    # Plot 2: Correlation heatmap
+    st.write("2. Correlation Heatmap")
+    corr = df.corr()
+    sns.heatmap(corr, annot=True, cmap='coolwarm')
+    st.pyplot()
+    
+    # Plot 3: Bar plots for categorical features
+    st.write("3. Bar Plot for Categorical Features")
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    for col in categorical_cols:
+        sns.countplot(y=col, data=df)
+        st.pyplot()
+    
+    # Plot 4: Box plots for numerical features
+    st.write("4. Box Plot for Numerical Features")
+    numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    for col in numerical_cols:
+        sns.boxplot(x=df[col])
+        st.pyplot()
 
-# Train and evaluate the model
-def train_model(df):
+    # Plot 5: Pairplot of key features
+    st.write("5. Pairplot")
+    sns.pairplot(df)
+    st.pyplot()
+
+# Function to train the model
+def train_model(df, model_choice):
+    st.subheader("Model Training and Evaluation")
+    
+    if 'Churn' not in df.columns:
+        st.error("Target column 'Churn' not found in the dataset.")
+        return None
+    
     X = df.drop('Churn', axis=1)
     y = df['Churn']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    if model_choice == 'Logistic Regression':
+        model = LogisticRegression()
+    elif model_choice == 'Random Forest':
+        model = RandomForestClassifier()
+    elif model_choice == 'Support Vector Machine':
+        model = SVC(probability=True)
+    elif model_choice == 'Gradient Boosting':
+        model = GradientBoostingClassifier()
+    elif model_choice == 'K-Nearest Neighbors':
+        model = KNeighborsClassifier()
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-
-    model = RandomForestClassifier(random_state=42)
     model.fit(X_train, y_train)
-
     y_pred = model.predict(X_test)
-
-    return model, y_test, y_pred
-
-# Display evaluation metrics
-def display_metrics(y_test, y_pred):
-    st.write("## Model Evaluation")
+    
     st.write(f"Accuracy: {accuracy_score(y_test, y_pred):.2f}")
-    st.write(f"Precision: {precision_score(y_test, y_pred):.2f}")
-    st.write(f"Recall: {recall_score(y_test, y_pred):.2f}")
-    st.write(f"F1 Score: {f1_score(y_test, y_pred):.2f}")
-    st.write(f"ROC AUC: {roc_auc_score(y_test, y_pred):.2f}")
+    st.write("Confusion Matrix:")
+    st.write(confusion_matrix(y_test, y_pred))
+    st.write("Classification Report:")
+    st.write(classification_report(y_test, y_pred))
+    
+    return model
 
-# Main function to run the Streamlit app
-def main():
-    st.title("Churn Prediction App")
-    st.write("This app predicts customer churn based on their details.")
+# Streamlit app layout
+st.title("Customer Churn Prediction App")
 
-    # Load Data
-    if 'data_loaded' not in st.session_state:
-        st.session_state['data_loaded'] = False
-        st.session_state['cleaned'] = False
-        st.session_state['preprocessed'] = False
-        st.session_state['eda_done'] = False
+# Sidebar for settings
+st.sidebar.header("Settings")
 
-    if not st.session_state['data_loaded']:
-        st.session_state['data'] = load_data()
-        display_data(st.session_state['data'])
-        st.session_state['data_loaded'] = True
-
-    # Clean Data
-    if st.button("Clean Data"):
-        st.session_state['data'] = clean_data(st.session_state['data'])
-        st.session_state['cleaned'] = True
-        st.session_state['preprocessed'] = False
-        st.session_state['eda_done'] = False
-
-    if st.session_state['cleaned']:
-        st.write("### Cleaned Data")
-        st.dataframe(st.session_state['data'].head())
-
-        # Preprocess Data
-        if st.button("Preprocess Data"):
-            st.session_state['data'] = preprocess_data(st.session_state['data'])
-            st.session_state['preprocessed'] = True
-
-    if st.session_state['preprocessed']:
-        st.write("### Preprocessed Data")
-        st.dataframe(st.session_state['data'].head())
-
-        # Show Statistics
-        st.write("### Basic Statistics after Preprocessing")
-        st.write(st.session_state['data'].describe())
-
-        # EDA Visualizations
-        if st.button("Show EDA Visualizations"):
-            eda_visualization(st.session_state['data'])
-            st.session_state['eda_done'] = True
-
-    if st.session_state['eda_done']:
-        # Train Model
-        if st.button("Train Model"):
-            model, y_test, y_pred = train_model(st.session_state['data'])
-            display_metrics(y_test, y_pred)
-
-if __name__ == "__main__":
-    main()
+# Data Collection: File Upload
+uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+if uploaded_file is not None:
+    df = load_data(uploaded_file)
+    data_overview(df)
+    
+    # Checkbox options for various steps
+    if st.sidebar.checkbox("Clean Data"):
+        df = clean_data(df)
+        st.write("Cleaned Data:")
+        st.write(df.head())
+    
+    if st.sidebar.checkbox("Preprocess Data"):
+        df = feature_engineering(df)
+        df = preprocess_data(df)
+        st.write("Preprocessed Data:")
+        st.write(df.head())
+    
+    if st.sidebar.checkbox("Perform EDA"):
+        eda(df)
+    
+    model_choice = st.sidebar.selectbox("Choose Model", 
+                                        ["Logistic Regression", "Random Forest", "Support Vector Machine", 
+                                         "Gradient Boosting", "K-Nearest Neighbors"])
+    
+    if st.sidebar.checkbox("Train Model"):
+        model = train_model(df, model_choice)
