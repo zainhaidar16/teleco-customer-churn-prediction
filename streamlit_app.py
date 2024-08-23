@@ -83,6 +83,8 @@ def build_and_train_model(X_train, y_train):
 def main():
     st.title("Customer Churn Prediction")
 
+    st.write("This is a simple customer churn prediction app. Please upload your data and configure the settings to train the model.")
+
     # Sidebar for file upload and settings
     st.sidebar.header("Upload Data and Settings")
 
